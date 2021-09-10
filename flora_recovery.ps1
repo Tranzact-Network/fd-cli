@@ -2,7 +2,7 @@
     [string]$fingerprint,
     [int]$sleep = 0,
     [string]$nettype = "mainnet", 
-    [string[]]$blockchains = "flora",
+    [string[]]$blockchains = "tranzact",
     [Parameter(Mandatory=$True)][string]$LAUNCHER_HASH,
     [Parameter(Mandatory=$True)][string]$POOL_CONTRACT_ADDRESS)
 
@@ -17,7 +17,7 @@ function Install-fdcli {
     {
         
         Set-Location $Env:Userprofile
-        git clone https://github.com/Flora-Network/fd-cli
+        git clone https://github.com/Tranzact-Network/fd-cli
         write-log "fd-cli not present. Installing"  
         Set-Location fd-cli
         python -m venv venv
