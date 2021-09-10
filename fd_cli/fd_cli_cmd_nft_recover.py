@@ -107,7 +107,7 @@ def fd_cli_cmd_nft_recover(
         f"SELECT * "
         f"FROM coin_record "
         f"WHERE spent == 0 "
-        f"AND timestamp <= (strftime('%s', 'now')) "
+        f"AND timestamp <= (strftime('%s', 'now') - {delay}) "
         f"AND puzzle_hash LIKE '{contract_hash_hex}' "
         f"ORDER BY timestamp DESC")
 
@@ -126,3 +126,97 @@ def fd_cli_cmd_nft_recover(
     else:
         fd_cli_print_raw('Coins eligible for recovery:', pre=pre)
         fd_cli_print_coin_lite_many(coin_records, pre=pre + 1)
+
+    coin_solutions: list[dict] = []
+
+    for coin in coin_records:
+        coin_parent: str = coin[6]
+        coin_amount: int = int.from_bytes(coin[7], byteorder='big', signed=False)
+
+        coin_solution_hex: str = bytes(SerializedProgram.from_program(
+            Program.to([uint64(coin_amount), 0])
+        )).hex()
+
+        coin_solutions.append({
+            'coin': {
+                'amount': coin_amount,
+                'parent_coin_info': coin_parent,
+                'puzzle_hash': contract_hash_hex
+            },
+            'puzzle_reveal': program_puzzle_hex,
+            'solution': coin_solution_hex
+        })
+
+    balance_recovered: int = 0
+
+    if not cert_ca_path:
+        urllib3.disable_warnings()
+
+    for coin_solutions_b in [coin_solutions[x:x + 50] for x in range(0, len(coin_solutions), 50)]:
+
+        balance_batch: int = 0
+
+        for coin_solution in coin_solutions_b:
+            balance_batch += coin_solution['coin']['amount']
+
+        exception: Exception = None
+        guard_success: bool = False
+
+        try:
+            response = requests.post(
+                url=f'https://{node_host}:{node_port}/push_tx',
+                cert=(cert_path, cert_key_path),
+                verify=cert_ca_path if cert_ca_path else False,
+                json={
+                    'spend_bundle': {
+                        'aggregated_signature': FD_CLI_CST_AGGREGATED_SIGNATURE,
+                        'coin_solutions': coin_solutions_b
+                    }
+                })
+
+            response.raise_for_status()
+            guard_success = True
+        except Exception as e:
+            exception = e
+
+        if not guard_success:
+            try:
+                response = requests.post(
+                    url=f'https://{node_host}:{node_port}/push_tx',
+                    cert=(cert_path, cert_key_path),
+                    verify=cert_ca_path if cert_ca_path else False,
+                    json={
+                        'spend_bundle': {
+                            'aggregated_signature': FD_CLI_CST_AGGREGATED_SIGNATURE,
+                            'coin_spends': coin_solutions_b
+                        }
+                    })
+
+                response.raise_for_status()
+                guard_success = True
+            except Exception as e:
+                exception = e
+
+        if guard_success:
+            fd_cli_print_raw(
+                f'A new network transaction has been sent to recover a total of '
+                f'{balance_batch / (10 ** 12):.12f} coins.',
+                pre=pre)
+            balance_recovered += balance_batch
+        else:
+            fd_cli_print_raw(
+                'An error occurred while sending the recovery transaction.', pre=pre)
+
+            if exception is not None:
+                fd_cli_print_raw(exception, pre=pre)
+
+    if balance_recovered == 0:
+        fd_cli_print_raw(
+            'Coins could not be recovered. '
+            'Please check your input parameters, network connection and try again.', pre=pre)
+        return
+
+    fd_cli_print_raw('', pre=pre)
+    fd_cli_print_raw(f'Sent transactions to recover a total of '
+                     f'{balance_recovered / (10 ** 12):.12f} coins.', pre=pre)
+    fd_cli_print_raw(f'Coins should be spendable in few network confirmations.', pre=pre)

@@ -44,7 +44,7 @@ fd-cli nft-recover \
   -l "$LAUNCHER_HASH" \
   -p "$POOL_CONTRACT_ADDRESS" \
   -nh 127.0.0.1 \
-  -np 8673 \
+  -np 8673\
   -ct $HOME/.tranzact/mainnet/config/ssl/full_node/private_full_node.crt \
   -ck $HOME/.tranzact/mainnet/config/ssl/full_node/private_full_node.key
   
